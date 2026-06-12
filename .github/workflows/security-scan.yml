@@ -71,22 +71,34 @@ jobs:
         env:
           PIP_INDEX_URL: https://pypi.org/simple/
 
-      - name: Install security scanning tools
+      - name: Install Gitleaks
         run: |
           echo "Installing Gitleaks ${GITLEAKS_VERSION}..."
-          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o /tmp/gitleaks.tar.gz
+          curl --fail --show-error --location --retry 3 \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            -o /tmp/gitleaks.tar.gz
+          tar -tzf /tmp/gitleaks.tar.gz >/dev/null
           tar -xzf /tmp/gitleaks.tar.gz -C /tmp
-          chmod +x /tmp/gitleaks
-          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
-          gitleaks version
+          sudo install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
 
+      - name: Install Semgrep
+        run: |
           echo "Installing Semgrep ${SEMGREP_VERSION}..."
-          pip install -q "semgrep==${SEMGREP_VERSION}"
-          semgrep --version
+          python -m pip install -q "semgrep==${SEMGREP_VERSION}"
 
-          echo "Installing Trivy ${TRIVY_VERSION}..."
-          curl -sSL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb" -o /tmp/trivy.deb
-          sudo dpkg -i /tmp/trivy.deb
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.2.0
+        with:
+          version: v${{ env.TRIVY_VERSION }}
+          cache: true
+
+      - name: Verify security tools
+        run: |
+          command -v gitleaks
+          command -v semgrep
+          command -v trivy
+          gitleaks version
+          semgrep --version
           trivy --version
 
       - name: Run unified security pipeline
