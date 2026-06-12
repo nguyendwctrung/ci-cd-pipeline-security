@@ -1,0 +1,165 @@
+name: CI/CD Security Scan
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+env:
+  REPORTS_DIR: security_system/reports/artifacts
+  GITLEAKS_VERSION: "8.24.2"
+  SEMGREP_VERSION: "1.101.0"
+  TRIVY_VERSION: "0.58.2"
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: security_system/requirements.txt
+
+      - name: Configure diff context
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "SECURITY_DIFF_BASE=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_ENV"
+            echo "SECURITY_DIFF_HEAD=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_ENV"
+          else
+            BEFORE="${{ github.event.before }}"
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              BEFORE="$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)"
+            fi
+            echo "SECURITY_DIFF_BASE=$BEFORE" >> "$GITHUB_ENV"
+            echo "SECURITY_DIFF_HEAD=${{ github.sha }}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Create reports directory
+        run: mkdir -p "${{ env.REPORTS_DIR }}"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -q -r security_system/requirements.txt
+        env:
+          PIP_INDEX_URL: https://pypi.org/simple/
+
+      - name: Install security scanning tools
+        run: |
+          echo "Installing Gitleaks ${GITLEAKS_VERSION}..."
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o /tmp/gitleaks.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp
+          chmod +x /tmp/gitleaks
+          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+          echo "Installing Semgrep ${SEMGREP_VERSION}..."
+          pip install -q "semgrep==${SEMGREP_VERSION}"
+          semgrep --version
+
+          echo "Installing Trivy ${TRIVY_VERSION}..."
+          curl -sSL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb" -o /tmp/trivy.deb
+          sudo dpkg -i /tmp/trivy.deb
+          trivy --version
+
+      - name: Run unified security pipeline
+        id: decision
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: |
+          echo "Running unified security pipeline..."
+          python -m security_system.application.pipeline
+
+      - name: Display reports
+        if: always()
+        run: |
+          echo "=== Security Reports ==="
+          for report in summary.json ai_analysis.json decision_report.json; do
+            path="${{ env.REPORTS_DIR }}/${report}"
+            if [ -f "$path" ]; then
+              echo ""
+              echo "${report}:"
+              cat "$path"
+              echo ""
+            fi
+          done
+
+      - name: Upload security reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: ${{ env.REPORTS_DIR }}/
+          retention-days: 30
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-logs
+          path: ${{ env.REPORTS_DIR }}/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Comment PR with security findings
+        if: github.event_name == 'pull_request' && always()
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const reportsDir = '${{ env.REPORTS_DIR }}';
+
+            let comment = '## Security Scan Results\n\n';
+
+            try {
+              if (fs.existsSync(`${reportsDir}/ai_analysis.json`)) {
+                const analysis = JSON.parse(fs.readFileSync(`${reportsDir}/ai_analysis.json`, 'utf8'));
+                comment += `### LLM Analysis\n`;
+                comment += `- **Available**: ${analysis.errors && analysis.errors.length ? 'NO' : 'YES'}\n`;
+                comment += `- **Recommendation**: ${analysis.recommended_decision || 'unknown'}\n`;
+                comment += `- **Risk Level**: ${analysis.risk_level}\n`;
+                comment += `- **Malicious**: ${analysis.is_malicious ? 'YES' : 'NO'}\n\n`;
+              }
+
+              if (fs.existsSync(`${reportsDir}/decision_report.json`)) {
+                const decision = JSON.parse(fs.readFileSync(`${reportsDir}/decision_report.json`, 'utf8'));
+                const icon = decision.decision === 'FAIL' ? '[FAIL]' : decision.decision === 'WARN' ? '[WARN]' : '[PASS]';
+                comment += `### Decision\n`;
+                comment += `${icon} **${decision.decision}**: ${decision.reason}\n\n`;
+                if (decision.metadata) {
+                  comment += `- **Policy**: ${decision.metadata.policy_decision || 'unknown'}\n`;
+                  comment += `- **LLM**: ${decision.metadata.llm_decision || 'unknown'}\n`;
+                  comment += `- **Source**: ${decision.metadata.final_decision_source || 'unknown'}\n`;
+                }
+              }
+            } catch (e) {
+              comment += `Failed to parse reports: ${e.message}\n`;
+            }
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: Fail if security decision is FAIL
+        if: steps.decision.outcome == 'failure'
+        run: |
+          echo "[FAIL] Security check FAILED - blocking merge"
+          exit 1
