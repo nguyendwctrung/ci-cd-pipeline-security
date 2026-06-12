@@ -10,7 +10,6 @@ env:
   REPORTS_DIR: security_system/reports/artifacts
   GITLEAKS_VERSION: "8.24.2"
   SEMGREP_VERSION: "1.101.0"
-  TRIVY_VERSION: "0.58.2"
 
 jobs:
   security-scan:
