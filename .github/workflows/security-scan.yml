@@ -35,18 +35,31 @@ jobs:
           cache-dependency-path: security_system/requirements.txt
 
       - name: Configure diff context
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "SECURITY_DIFF_BASE=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_ENV"
-            echo "SECURITY_DIFF_HEAD=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_ENV"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE="$PR_BASE_SHA"
+            HEAD="$PR_HEAD_SHA"
           else
-            BEFORE="${{ github.event.before }}"
-            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-              BEFORE="$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)"
+            BASE="$BEFORE_SHA"
+            HEAD="$CURRENT_SHA"
+
+            if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+              if git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+                BASE="$(git rev-parse --verify HEAD^)"
+              else
+                BASE="$(git hash-object -t tree /dev/null)"
+              fi
             fi
-            echo "SECURITY_DIFF_BASE=$BEFORE" >> "$GITHUB_ENV"
-            echo "SECURITY_DIFF_HEAD=${{ github.sha }}" >> "$GITHUB_ENV"
           fi
+
+          printf 'SECURITY_DIFF_BASE=%s\n' "$BASE" >> "$GITHUB_ENV"
+          printf 'SECURITY_DIFF_HEAD=%s\n' "$HEAD" >> "$GITHUB_ENV"
 
       - name: Create reports directory
         run: mkdir -p "${{ env.REPORTS_DIR }}"
