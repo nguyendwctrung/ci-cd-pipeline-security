@@ -62,5 +62,3 @@ Thumbs.db
 # Logs
 *.log
 logs/
-
-tests/

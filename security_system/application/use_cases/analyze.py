@@ -48,7 +48,7 @@ def analyze(
 	try:
 		from security_system.infrastructure.llm import GeminiProvider
 		provider = GeminiProvider(api_key=api_key)
-	except EnvironmentError as exc:
+	except (EnvironmentError, ImportError) as exc:
 		logger.warning("LLM provider unavailable — using fallback: %s", exc)
 		return AnalysisResult.fallback(timestamp, str(exc))
 
