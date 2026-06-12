@@ -87,10 +87,12 @@ jobs:
           python -m pip install -q "semgrep==${SEMGREP_VERSION}"
 
       - name: Install Trivy
-        uses: aquasecurity/setup-trivy@v0.2.0
-        with:
-          version: v${{ env.TRIVY_VERSION }}
-          cache: true
+        run: |
+          echo "Installing Trivy..."
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update -qq
+          sudo apt-get install -qq -y trivy
 
       - name: Verify security tools
         run: |
