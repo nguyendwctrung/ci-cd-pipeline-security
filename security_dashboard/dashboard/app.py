@@ -9,7 +9,16 @@ import streamlit as st
 
 from auth import verify_password
 from configuration import mongodb_configuration_error
-from dashboard_data import build_overview, filter_runs, load_runs, parse_timestamp, runs_frame, stage_frame
+from dashboard_data import (
+    SEVERITY_ORDER,
+    build_overview,
+    filter_runs,
+    load_runs,
+    parse_timestamp,
+    runs_frame,
+    severity_rows,
+    stage_frame,
+)
 
 
 SESSION_SECONDS = 8 * 60 * 60
@@ -133,12 +142,22 @@ def render_dashboard() -> None:
             ])
             st.bar_chart(counts, x="status", y="runs", horizontal=True)
 
-        severity = pd.DataFrame([
-            {"severity": key, "findings": value}
-            for key, value in latest.get("findings_by_severity", {}).items()
-        ])
+        severity = pd.DataFrame(severity_rows(latest.get("findings_by_severity", {})))
+        severity_chart = alt.Chart(severity).mark_bar().encode(
+            x=alt.X("severity:N", title="Severity", sort=list(SEVERITY_ORDER)),
+            y=alt.Y("findings:Q", title="Findings"),
+            color=alt.Color(
+                "severity:N",
+                title="Severity",
+                scale=alt.Scale(
+                    domain=list(SEVERITY_ORDER),
+                    range=["#dc2626", "#f97316", "#eab308", "#16a34a"],
+                ),
+            ),
+            tooltip=("severity:N", "findings:Q"),
+        )
         st.subheader("Latest findings by severity")
-        st.bar_chart(severity, x="severity", y="findings")
+        st.altair_chart(severity_chart, width="stretch")
 
     with trends_tab:
         frame = runs_frame(reversed(runs))

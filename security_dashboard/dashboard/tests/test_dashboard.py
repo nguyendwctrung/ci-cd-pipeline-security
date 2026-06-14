@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from auth import hash_password, verify_password
 from configuration import mongodb_configuration_error
-from dashboard_data import build_overview, filter_runs, parse_timestamp, runs_frame, stage_frame
+from dashboard_data import (
+    SEVERITY_ORDER,
+    build_overview,
+    filter_runs,
+    parse_timestamp,
+    runs_frame,
+    severity_rows,
+    stage_frame,
+)
 
 
 def sample_run(run_id="1", status="COMPLETED"):
@@ -51,6 +59,13 @@ def test_frames_handle_empty_and_nested_data():
 def test_parse_timestamp_handles_valid_and_invalid_values():
     assert parse_timestamp("2026-06-12T00:00:00+00:00").isoformat() == "2026-06-12T00:00:00+00:00"
     assert parse_timestamp(None) is None
+
+
+def test_severity_rows_use_risk_order_and_fill_missing_levels():
+    rows = severity_rows({"LOW": 4, "CRITICAL": 1, "MEDIUM": 3})
+
+    assert [row["severity"] for row in rows] == list(SEVERITY_ORDER)
+    assert [row["findings"] for row in rows] == [1, 0, 3, 4]
 
 
 def test_mongodb_configuration_requires_valid_uri():

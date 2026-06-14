@@ -7,10 +7,21 @@ import pandas as pd
 from pymongo import DESCENDING, MongoClient
 
 
+SEVERITY_ORDER = ("CRITICAL", "HIGH", "MEDIUM", "LOW")
+
+
 def parse_timestamp(value: object) -> pd.Timestamp | None:
     """Convert an arbitrary stored timestamp into a UTC Pandas scalar."""
     parsed = pd.to_datetime(str(value), utc=True, errors="coerce")
     return parsed if isinstance(parsed, pd.Timestamp) else None
+
+
+def severity_rows(findings: dict[str, int]) -> list[dict[str, int | str]]:
+    """Return severity counts in descending risk order."""
+    return [
+        {"severity": severity, "findings": int(findings.get(severity, 0))}
+        for severity in SEVERITY_ORDER
+    ]
 
 
 def load_runs(
