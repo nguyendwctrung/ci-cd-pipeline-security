@@ -111,7 +111,9 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         run: |
           echo "Running unified security pipeline..."
-          python -m security_system.application.pipeline
+          python -m security_system.application.pipeline 2>&1 | tee "${{ env.REPORTS_DIR }}/security-pipeline.log"
+          pipeline_status=${PIPESTATUS[0]}
+          exit "$pipeline_status"
 
       - name: Display reports
         if: always()
@@ -132,15 +134,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: security-reports
-          path: ${{ env.REPORTS_DIR }}/
+          path: ${{ env.REPORTS_DIR }}/*.json
           retention-days: 30
+          if-no-files-found: ignore
 
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: security-logs
-          path: ${{ env.REPORTS_DIR }}/*.log
+          path: ${{ env.REPORTS_DIR }}/security-pipeline.log
           retention-days: 7
           if-no-files-found: ignore
 
