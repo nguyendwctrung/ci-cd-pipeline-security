@@ -48,7 +48,7 @@ def login() -> None:
         st.stop()
     with st.form("login_form", clear_on_submit=True):
         password = st.text_input("Dashboard password", type="password")
-        submitted = st.form_submit_button("Sign in", use_container_width=True)
+        submitted = st.form_submit_button("Sign in", width="stretch")
     if submitted:
         if verify_password(password, password_hash):
             st.session_state["authenticated"] = True
@@ -76,10 +76,10 @@ def render_dashboard() -> None:
         st.header("SecMonitor")
         st.caption("Security pipeline operations")
         days = st.select_slider("History", options=[7, 14, 30, 60, 90], value=30)
-        if st.button("Refresh data", use_container_width=True):
+        if st.button("Refresh data", width="stretch"):
             st.cache_data.clear()
             st.rerun()
-        if st.button("Log out", use_container_width=True):
+        if st.button("Log out", width="stretch"):
             st.session_state.clear()
             st.rerun()
 
@@ -125,7 +125,7 @@ def render_dashboard() -> None:
                 {"scanner": name.title(), "status": details.get("status", "UNKNOWN"), "error": details.get("error") or ""}
                 for name, details in latest.get("scanner_health", {}).items()
             ]
-            st.dataframe(scanner_rows, hide_index=True, use_container_width=True)
+            st.dataframe(scanner_rows, hide_index=True, width="stretch")
         with right:
             st.subheader("Run outcomes")
             counts = pd.DataFrame([
@@ -152,7 +152,7 @@ def render_dashboard() -> None:
                 color=alt.Color("status:N", title="Status"),
                 tooltip=("run_id", "status", "duration_seconds", "started"),
             ).properties(title="Pipeline duration")
-            st.altair_chart(duration_chart, use_container_width=True)
+            st.altair_chart(duration_chart, width="stretch")
 
             severity_chart = alt.Chart(frame).transform_fold(
                 ["high", "critical"], as_=["severity", "findings"]
@@ -162,7 +162,7 @@ def render_dashboard() -> None:
                 color=alt.Color("severity:N", scale=alt.Scale(domain=["high", "critical"], range=["#f59e0b", "#ef4444"])),
                 tooltip=("run_id", "severity:N", "findings:Q"),
             ).properties(title="High and critical findings")
-            st.altair_chart(severity_chart, use_container_width=True)
+            st.altair_chart(severity_chart, width="stretch")
 
             availability = round(frame["gemini_available"].mean() * 100, 1)
             st.metric("Gemini availability", f"{availability}%", f"Last {len(frame)} runs")
@@ -177,7 +177,7 @@ def render_dashboard() -> None:
             st.info("No runs match the selected filters.")
         else:
             table = frame[["run_id", "started", "status", "decision", "repository", "branch", "commit", "findings", "duration_seconds"]]
-            st.dataframe(table, hide_index=True, use_container_width=True)
+            st.dataframe(table, hide_index=True, width="stretch")
             selected_id = st.selectbox("Inspect run", frame["run_id"].tolist())
             selected = next(run for run in filtered if str(run.get("run_id") or run.get("github", {}).get("run_id")) == selected_id)
             st.subheader(f"Run {selected_id}")
@@ -187,7 +187,7 @@ def render_dashboard() -> None:
             detail_three.metric("Duration", f"{selected.get('duration_seconds', 0)}s")
             stages = stage_frame(selected)
             if not stages.empty:
-                st.dataframe(stages, hide_index=True, use_container_width=True)
+                st.dataframe(stages, hide_index=True, width="stretch")
             if selected.get("error"):
                 st.error(f"{selected['error'].get('category')}: {selected['error'].get('message')}")
             run_url = selected.get("github", {}).get("run_url")
