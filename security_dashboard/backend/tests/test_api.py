@@ -10,6 +10,7 @@ from pydantic import ValidationError
 import pytest
 
 from app.config import Settings, get_settings
+from app.main import app as main_app
 from app.main import create_app, get_repository
 
 
@@ -112,6 +113,12 @@ def test_ingestion_is_replay_protected_and_run_id_is_upserted():
 def test_health_endpoint_is_public():
     client, _ = build_client()
     assert client.get("/health").json() == {"status": "ok"}
+
+
+def test_vercel_entrypoint_exports_fastapi_app():
+    from index import app as vercel_app
+
+    assert vercel_app is main_app
 
 
 def test_required_settings_have_no_insecure_fallbacks(monkeypatch):

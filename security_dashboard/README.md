@@ -34,12 +34,32 @@ docker compose up --build
 
 Open the dashboard at `http://localhost:8501`. The ingestion health endpoint is available at `http://localhost:8001/health`.
 
+## Vercel deployment
+
+Deploy the FastAPI backend as a separate Vercel project with these settings:
+
+- **Root Directory:** `security_dashboard/backend`
+- **Framework Preset:** FastAPI or automatic detection
+- **Build Command:** leave empty
+- **Output Directory:** leave empty
+
+Configure these Vercel environment variables for the production deployment:
+
+- `MONGODB_URI`
+- `MONGODB_DATABASE`
+- `SECURITY_MONITOR_SECRET`
+- `RETENTION_DAYS`
+
+The root `backend/index.py` module exposes the existing FastAPI application to Vercel. After deployment, verify that `/health` returns `{"status":"ok"}` and `/docs` displays the FastAPI API documentation.
+
 ## GitHub configuration
 
 Configure these repository secrets:
 
 - `SECURITY_MONITOR_URL`, for example `https://monitor-api.example.com`
 - `SECURITY_MONITOR_SECRET`, matching `backend/.env`
+
+Set `SECURITY_MONITOR_URL` to the deployment base URL only, without `/health` or `/api/v1/runs`.
 
 GitHub Actions sends `monitor_report.json` only to FastAPI. Streamlit reads sanitized history directly from MongoDB. Monitoring publication is non-blocking and never changes the security gate result.
 
