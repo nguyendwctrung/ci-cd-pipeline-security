@@ -117,8 +117,10 @@ def test_health_endpoint_is_public():
 
 def test_vercel_entrypoint_exports_fastapi_app():
     from index import app as vercel_app
+    from api.index import app as vercel_function_app
 
     assert vercel_app is main_app
+    assert vercel_function_app is main_app
 
 
 def test_required_settings_have_no_insecure_fallbacks(monkeypatch):

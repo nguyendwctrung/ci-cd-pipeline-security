@@ -50,7 +50,7 @@ Configure these Vercel environment variables for the production deployment:
 - `SECURITY_MONITOR_SECRET`
 - `RETENTION_DAYS`
 
-The root `backend/index.py` module exposes the existing FastAPI application to Vercel. After deployment, verify that `/health` returns `{"status":"ok"}` and `/docs` displays the FastAPI API documentation.
+The root `backend/index.py` module and `backend/api/index.py` serverless function expose the existing FastAPI application to Vercel. `backend/vercel.json` explicitly rewrites public paths to that function. After deployment, verify that `/health` returns `{"status":"ok"}` and `/docs` displays the FastAPI API documentation.
 
 ## GitHub configuration
 
