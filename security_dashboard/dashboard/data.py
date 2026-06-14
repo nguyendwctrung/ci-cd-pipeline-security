@@ -7,6 +7,11 @@ import pandas as pd
 from pymongo import DESCENDING, MongoClient
 
 
+def parse_timestamp(value: object) -> pd.Timestamp:
+    """Convert an arbitrary stored timestamp into a UTC Pandas scalar."""
+    return pd.to_datetime(str(value), utc=True, errors="coerce")
+
+
 def load_runs(
     mongodb_uri: str,
     database: str,
@@ -77,7 +82,7 @@ def runs_frame(runs: Iterable[Dict[str, Any]]) -> pd.DataFrame:
         findings = run.get("findings_by_tool", {})
         rows.append({
             "run_id": str(run.get("run_id") or run.get("github", {}).get("run_id", "")),
-            "started": pd.to_datetime(run.get("run_started_at"), utc=True, errors="coerce"),
+            "started": parse_timestamp(run.get("run_started_at")),
             "status": run.get("pipeline_status", "UNKNOWN"),
             "decision": run.get("final_decision") or "UNAVAILABLE",
             "policy": run.get("policy_decision") or "UNAVAILABLE",
