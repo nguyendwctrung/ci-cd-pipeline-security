@@ -7,9 +7,10 @@ import pandas as pd
 from pymongo import DESCENDING, MongoClient
 
 
-def parse_timestamp(value: object) -> pd.Timestamp:
+def parse_timestamp(value: object) -> pd.Timestamp | None:
     """Convert an arbitrary stored timestamp into a UTC Pandas scalar."""
-    return pd.to_datetime(str(value), utc=True, errors="coerce")
+    parsed = pd.to_datetime(str(value), utc=True, errors="coerce")
+    return parsed if isinstance(parsed, pd.Timestamp) else None
 
 
 def load_runs(

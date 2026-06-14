@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import pandas as pd
-
 from auth import hash_password, verify_password
 from configuration import mongodb_configuration_error
-from data import build_overview, filter_runs, parse_timestamp, runs_frame, stage_frame
+from dashboard_data import build_overview, filter_runs, parse_timestamp, runs_frame, stage_frame
 
 
 def sample_run(run_id="1", status="COMPLETED"):
@@ -52,7 +50,7 @@ def test_frames_handle_empty_and_nested_data():
 
 def test_parse_timestamp_handles_valid_and_invalid_values():
     assert parse_timestamp("2026-06-12T00:00:00+00:00").isoformat() == "2026-06-12T00:00:00+00:00"
-    assert parse_timestamp(None) is pd.NaT
+    assert parse_timestamp(None) is None
 
 
 def test_mongodb_configuration_requires_valid_uri():

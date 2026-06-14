@@ -9,7 +9,7 @@ import streamlit as st
 
 from auth import verify_password
 from configuration import mongodb_configuration_error
-from data import build_overview, filter_runs, load_runs, parse_timestamp, runs_frame, stage_frame
+from dashboard_data import build_overview, filter_runs, load_runs, parse_timestamp, runs_frame, stage_frame
 
 
 SESSION_SECONDS = 8 * 60 * 60
@@ -60,7 +60,7 @@ def format_time(value: object) -> str:
     if not value:
         return "Never"
     parsed = parse_timestamp(value)
-    if pd.isna(parsed):
+    if parsed is None:
         return "Unknown"
     return parsed.strftime("%Y-%m-%d %H:%M UTC")
 
