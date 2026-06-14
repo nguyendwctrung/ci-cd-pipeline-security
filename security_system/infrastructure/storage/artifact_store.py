@@ -23,6 +23,7 @@ from security_system.config.constants import (
     SUMMARY_REPORT,
     AI_ANALYSIS_REPORT,
     DECISION_REPORT,
+    MONITOR_REPORT,
 )
 from .file_store import ensure_dir, write_json
 
@@ -36,6 +37,7 @@ __all__ = [
     "SUMMARY_REPORT",
     "AI_ANALYSIS_REPORT",
     "DECISION_REPORT",
+    "MONITOR_REPORT",
     "ArtifactStore",
 ]
 
@@ -70,6 +72,10 @@ class ArtifactStore:
     def save_summary(self, data: Dict[str, Any]) -> bool:
         """Persist the aggregated scan summary."""
         return self._save(SUMMARY_REPORT, data)
+
+    def save_monitor(self, data: Dict[str, Any]) -> bool:
+        """Persist the sanitized pipeline monitoring report."""
+        return self._save(MONITOR_REPORT, data)
 
     def save_scanner_report(self, tool: str, data: Any) -> bool:
         """

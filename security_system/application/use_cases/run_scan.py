@@ -12,7 +12,9 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
+from security_system.application.monitoring import PipelineMonitor
 
 from security_system.domain.models import SecurityIssue
 from security_system.domain.parsers import (
@@ -47,7 +49,11 @@ class ScanOutput:
 	all_issues: List[SecurityIssue] = field(default_factory=list)
 
 
-def run_scan(target: Path, reports_dir: Path) -> ScanOutput:
+def run_scan(
+	target: Path,
+	reports_dir: Path,
+	monitor: Optional[PipelineMonitor] = None,
+) -> ScanOutput:
 	"""
 	Run all three security scanners against *target* and return normalized output.
 
@@ -76,22 +82,48 @@ def run_scan(target: Path, reports_dir: Path) -> ScanOutput:
 
 	# --- Step 1: Run scanners (CLI via infra) --------------------------------
 	logger.info("Running Gitleaks on %s", target)
+	if monitor:
+		monitor.start_stage("gitleaks_scan")
 	gl_raw = run_gitleaks(target, output_path=gl_path)
 	if gl_raw is None:
+		if monitor:
+			monitor.finish_stage("gitleaks_scan", "ERROR", "Scanner execution failed")
+			monitor.record_scanner("gitleaks", "ERROR", "Scanner execution failed")
 		raise RuntimeError("Gitleaks scanner failed or is not installed.")
+	if monitor:
+		monitor.finish_stage("gitleaks_scan", "COMPLETED")
+		monitor.record_scanner("gitleaks", "HEALTHY")
 
 	logger.info("Running Semgrep on %s", target)
+	if monitor:
+		monitor.start_stage("semgrep_scan")
 	sg_raw = run_semgrep(target, output_path=sg_path)
 	if sg_raw is None:
+		if monitor:
+			monitor.finish_stage("semgrep_scan", "ERROR", "Scanner execution failed")
+			monitor.record_scanner("semgrep", "ERROR", "Scanner execution failed")
 		raise RuntimeError("Semgrep scanner failed or is not installed.")
+	if monitor:
+		monitor.finish_stage("semgrep_scan", "COMPLETED")
+		monitor.record_scanner("semgrep", "HEALTHY")
 
 	logger.info("Running Trivy on %s", target)
+	if monitor:
+		monitor.start_stage("trivy_scan")
 	tv_raw = run_trivy(target, output_path=tv_path)
 	if tv_raw is None:
+		if monitor:
+			monitor.finish_stage("trivy_scan", "ERROR", "Scanner execution failed")
+			monitor.record_scanner("trivy", "ERROR", "Scanner execution failed")
 		raise RuntimeError("Trivy scanner failed or is not installed.")
+	if monitor:
+		monitor.finish_stage("trivy_scan", "COMPLETED")
+		monitor.record_scanner("trivy", "HEALTHY")
 
 	# --- Step 2: Parse with domain parsers -----------------------------------
 	logger.info("Parsing scan reports")
+	if monitor:
+		monitor.start_stage("report_parsing")
 	gl_summary = GitleaksParser().parse_file(gl_path)
 	sg_summary = SemgrepParser().parse_file(sg_path)
 	tv_summary = TrivyParser().parse_file(tv_path)
@@ -101,6 +133,9 @@ def run_scan(target: Path, reports_dir: Path) -> ScanOutput:
 		"semgrep": sg_summary,
 		"trivy": tv_summary,
 	}
+	if monitor:
+		monitor.finish_stage("report_parsing", "COMPLETED")
+		monitor.record_findings(summaries)
 
 	# --- Step 3: Build raw_data for LLM prompt --------------------------------
 	raw_data: Dict[str, List[Any]] = {

@@ -26,4 +26,5 @@ TRIVY_REPORT = "trivy-report.json"
 SUMMARY_REPORT = "summary.json"
 AI_ANALYSIS_REPORT = "ai_analysis.json"
 DECISION_REPORT = "decision_report.json"
+MONITOR_REPORT = "monitor_report.json"
 
