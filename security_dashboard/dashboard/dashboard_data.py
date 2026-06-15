@@ -8,6 +8,7 @@ from pymongo import DESCENDING, MongoClient
 
 
 SEVERITY_ORDER = ("CRITICAL", "HIGH", "MEDIUM", "LOW")
+PIPELINE_STATUS_ORDER = ("COMPLETED", "BLOCKED", "ERROR")
 
 
 def parse_timestamp(value: object) -> pd.Timestamp | None:
@@ -103,7 +104,7 @@ def filter_runs(
 
 def build_overview(runs: list[Dict[str, Any]]) -> Dict[str, Any]:
     latest = runs[0] if runs else None
-    status_counts = {status: 0 for status in ("COMPLETED", "BLOCKED", "ERROR")}
+    status_counts = {status: 0 for status in PIPELINE_STATUS_ORDER}
     for run in runs:
         current = run.get("pipeline_status")
         if current in status_counts:

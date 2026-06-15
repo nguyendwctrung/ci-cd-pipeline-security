@@ -3,6 +3,7 @@ from __future__ import annotations
 from auth import hash_password, verify_password
 from configuration import mongodb_configuration_error
 from dashboard_data import (
+    PIPELINE_STATUS_ORDER,
     SEVERITY_ORDER,
     build_overview,
     filter_findings,
@@ -87,3 +88,7 @@ def test_findings_frame_filters_and_missing_locations():
     assert len(filter_findings(frame, severity="HIGH")) == 1
     assert len(filter_findings(frame, tool="trivy", search="package")) == 1
     assert len(filter_findings(frame, run_id="2", file="app.py")) == 1
+
+
+def test_pipeline_status_order_matches_chart_domain():
+    assert PIPELINE_STATUS_ORDER == ("COMPLETED", "BLOCKED", "ERROR")

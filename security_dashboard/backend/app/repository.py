@@ -37,11 +37,12 @@ class MongoRunRepository:
             return False
 
     def upsert(self, report: Dict[str, Any]) -> Dict[str, Any]:
-        run_id = str(report["github"]["run_id"])
-        findings = report.pop("findings", [])
+        report_data = dict(report)
+        run_id = str(report_data["github"]["run_id"])
+        findings = report_data.pop("findings", [])
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(days=self.retention_days)
-        document = {**report, "run_id": run_id, "updated_at": now}
+        document = {**report_data, "run_id": run_id, "updated_at": now}
         saved = self.runs.find_one_and_update(
             {"run_id": run_id},
             {"$set": document, "$setOnInsert": {"created_at": datetime.now(timezone.utc)}},
@@ -52,7 +53,7 @@ class MongoRunRepository:
         self.findings.delete_many({"run_id": run_id})
         if findings:
             self.findings.insert_many([
-                {**finding, "run_id": run_id, "commit": report.get("git", {}).get("commit_sha", "unknown"), "expires_at": expires_at}
+                {**finding, "run_id": run_id, "commit": report_data.get("git", {}).get("commit_sha", "unknown"), "expires_at": expires_at}
                 for finding in findings
             ])
         return saved

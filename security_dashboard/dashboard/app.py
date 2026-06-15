@@ -25,6 +25,8 @@ from dashboard_data import (
 
 
 SESSION_SECONDS = 8 * 60 * 60
+PIPELINE_STATUS_ORDER = ("COMPLETED", "BLOCKED", "ERROR")
+PIPELINE_STATUS_COLORS = ("#1f883d", "#d1242f", "#d1242f")
 
 
 st.set_page_config(
@@ -65,6 +67,7 @@ def login() -> None:
             st.session_state["authenticated"] = True
             st.session_state["login_time"] = time.time()
             st.rerun()
+            return
         st.error("Invalid password.")
 
 
@@ -119,9 +122,19 @@ def render_dashboard() -> None:
         st.stop()
 
     overview = build_overview(runs)
-    latest = overview["latest"]
-    findings = latest.get("findings_by_severity", {})
-    total_findings = sum(latest.get("findings_by_tool", {}).values())
+    latest_value = overview.get("latest")
+    if not isinstance(latest_value, dict):
+        st.error("Latest monitoring run has an invalid data shape.")
+        st.stop()
+        return
+    latest: dict = latest_value
+    findings_value = latest.get("findings_by_severity")
+    findings = findings_value if isinstance(findings_value, dict) else {}
+    findings_by_tool = latest.get("findings_by_tool")
+    total_findings = sum(
+        int(value)
+        for value in findings_by_tool.values()
+    ) if isinstance(findings_by_tool, dict) else 0
 
     status, decision, finding_metric, duration, gemini = st.columns(5)
     status.metric("Pipeline status", latest.get("pipeline_status", "UNKNOWN"))
@@ -175,7 +188,14 @@ def render_dashboard() -> None:
             duration_chart = alt.Chart(frame).mark_line(point=True).encode(
                 x=alt.X("started:T", title="Run time"),
                 y=alt.Y("duration_seconds:Q", title="Seconds"),
-                color=alt.Color("status:N", title="Status"),
+                color=alt.Color(
+                    "status:N",
+                    title="Status",
+                    scale=alt.Scale(
+                        domain=list(PIPELINE_STATUS_ORDER),
+                        range=list(PIPELINE_STATUS_COLORS),
+                    ),
+                ),
                 tooltip=("run_id", "status", "duration_seconds", "started"),
             ).properties(title="Pipeline duration")
             st.altair_chart(duration_chart, width="stretch")
@@ -195,7 +215,11 @@ def render_dashboard() -> None:
 
     with findings_tab:
         run_ids = tuple(str(run.get("run_id") or run.get("github", {}).get("run_id", "")) for run in runs)
-        finding_records = cached_findings(uri, database, run_ids)
+        try:
+            finding_records = cached_findings(uri, database, run_ids)
+        except Exception as exc:
+            st.error(f"Detailed findings are unavailable: {str(exc)[:300]}")
+            finding_records = []
         frame = findings_frame(finding_records)
         if any(run.get("findings_truncated") for run in runs):
             st.warning("One or more runs reached the configured finding limit; displayed details may be incomplete.")
@@ -209,10 +233,17 @@ def render_dashboard() -> None:
                 st.session_state["findings_run_filter"] = pending_run
             if st.session_state.get("findings_run_filter") not in run_options:
                 st.session_state["findings_run_filter"] = "ALL"
-            selected_run = first.selectbox("Run", run_options, key="findings_run_filter")
-            severity = second.selectbox("Severity", ["ALL", *SEVERITY_ORDER])
-            tools = ["ALL", *sorted(frame["tool"].dropna().unique().tolist())]
-            tool = third.selectbox("Scanner", tools)
+            selected_run = str(
+                first.selectbox("Run", run_options, key="findings_run_filter") or "ALL"
+            )
+            severity = str(
+                second.selectbox("Severity", ["ALL", *SEVERITY_ORDER]) or "ALL"
+            )
+            tools = [
+                "ALL",
+                *sorted(str(value) for value in frame["tool"].dropna().unique()),
+            ]
+            tool = str(third.selectbox("Scanner", tools) or "ALL")
             fourth, fifth, sixth = st.columns(3)
             finding_type = fourth.text_input("Type or rule")
             file_filter = fifth.text_input("File")
@@ -240,7 +271,10 @@ def render_dashboard() -> None:
                 "MEDIUM": "background-color: #fef9c3; color: #854d0e",
                 "LOW": "background-color: #dcfce7; color: #166534",
             }
-            styled = visible.style.map(lambda value: severity_colors.get(value, ""), subset=["severity"])
+            styled = visible.style.map(
+                lambda value: severity_colors.get(str(value), ""),
+                subset=["severity"],
+            )
             st.dataframe(styled, hide_index=True, width="stretch")
             st.download_button(
                 "Export filtered CSV",
@@ -251,7 +285,11 @@ def render_dashboard() -> None:
 
     with history_tab:
         filter_one, filter_two = st.columns((1, 2))
-        selected_status = filter_one.selectbox("Status", ("ALL", "COMPLETED", "BLOCKED", "ERROR"))
+        selected_status = str(
+            filter_one.selectbox(
+                "Status", ("ALL", "COMPLETED", "BLOCKED", "ERROR")
+            ) or "ALL"
+        )
         search = filter_two.text_input("Search", placeholder="Run ID, repository, branch, or commit")
         filtered = filter_runs(runs, status=selected_status, search=search)
         frame = runs_frame(filtered)
@@ -260,7 +298,9 @@ def render_dashboard() -> None:
         else:
             table = frame[["run_id", "started", "status", "decision", "repository", "branch", "commit", "findings", "duration_seconds"]]
             st.dataframe(table, hide_index=True, width="stretch")
-            selected_id = st.selectbox("Inspect run", frame["run_id"].tolist())
+            selected_id = str(
+                st.selectbox("Inspect run", frame["run_id"].astype(str).tolist()) or ""
+            )
             selected = next(run for run in filtered if str(run.get("run_id") or run.get("github", {}).get("run_id")) == selected_id)
             st.subheader(f"Run {selected_id}")
             detail_one, detail_two, detail_three = st.columns(3)

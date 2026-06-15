@@ -37,6 +37,7 @@ def test_upsert_replaces_findings_and_keeps_them_out_of_run_document():
     saved = repository.upsert(report)
 
     assert "findings" not in saved
+    assert "findings" in report
     assert repository.findings.deleted == [{"run_id": "10"}]
     assert repository.findings.inserted[0]["run_id"] == "10"
     assert repository.findings.inserted[0]["commit"] == "abc"
