@@ -50,6 +50,20 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(report["pipeline_status"], "ERROR")
         self.assertEqual(report["error"]["category"], "SCANNER_FAILURE")
 
+    def test_fail_decision_blocks_shell_and_monitoring(self) -> None:
+        decision = DecisionReport(
+            timestamp="2026-06-15T00:00:00Z",
+            decision="FAIL",
+            reason="High severity finding",
+            is_malicious=False,
+            metadata={"policy_decision": "FAIL"},
+        )
+        monitor = PipelineMonitor()
+        monitor.record_decision(decision)
+
+        self.assertEqual(decision.exit_code(), 1)
+        self.assertEqual(monitor.to_dict()["pipeline_status"], "BLOCKED")
+
     def test_unexpected_failure_still_writes_monitor_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             reports_dir = Path(tmp)

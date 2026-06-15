@@ -12,7 +12,7 @@ class PolicyEngineTest(unittest.TestCase):
 
         self.assertEqual(report.decision, "PASS")
 
-    def test_high_finding_warns(self) -> None:
+    def test_high_finding_fails(self) -> None:
         report = PolicyEngine().evaluate([
             SecurityIssue(
                 tool="semgrep",
@@ -22,7 +22,35 @@ class PolicyEngineTest(unittest.TestCase):
             )
         ])
 
+        self.assertEqual(report.decision, "FAIL")
+        self.assertEqual(report.metadata["reason_code"], "HIGH_FINDING")
+        self.assertEqual(report.metadata["severity_counts"]["HIGH"], 1)
+
+    def test_medium_finding_warns(self) -> None:
+        report = PolicyEngine().evaluate([
+            SecurityIssue(
+                tool="semgrep",
+                severity=Severity.MEDIUM,
+                type="test-rule",
+                message="medium severity finding",
+            )
+        ])
+
         self.assertEqual(report.decision, "WARN")
+        self.assertEqual(report.metadata["reason_code"], "MEDIUM_FINDING")
+
+    def test_low_finding_passes(self) -> None:
+        report = PolicyEngine().evaluate([
+            SecurityIssue(
+                tool="semgrep",
+                severity=Severity.LOW,
+                type="test-rule",
+                message="low severity finding",
+            )
+        ])
+
+        self.assertEqual(report.decision, "PASS")
+        self.assertEqual(report.metadata["severity_counts"]["LOW"], 1)
 
     def test_critical_finding_fails(self) -> None:
         report = PolicyEngine().evaluate([

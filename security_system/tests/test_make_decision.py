@@ -101,7 +101,7 @@ class MakeDecisionTest(unittest.TestCase):
         self.assertEqual(report.decision, "FAIL")
         self.assertEqual(report.metadata["final_decision_source"], "llm")
 
-    def test_policy_warn_wins_over_llm_pass(self) -> None:
+    def test_high_policy_fail_wins_over_llm_pass(self) -> None:
         issue = SecurityIssue(
             tool="semgrep",
             severity=Severity.HIGH,
@@ -111,6 +111,40 @@ class MakeDecisionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             report = make_decision(
                 _analysis(recommended_decision="PASS"),
+                {"test": _summary([issue])},
+                Path(tmp),
+            )
+
+        self.assertEqual(report.decision, "FAIL")
+        self.assertEqual(report.metadata["final_decision_source"], "policy")
+
+    def test_llm_unavailable_preserves_high_policy_fail(self) -> None:
+        issue = SecurityIssue(
+            tool="trivy",
+            severity=Severity.HIGH,
+            type="CVE-0000-0001",
+            message="high vulnerability",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            report = make_decision(
+                _analysis(recommended_decision="WARN", errors=["LLM unavailable"]),
+                {"test": _summary([issue])},
+                Path(tmp),
+            )
+
+        self.assertEqual(report.decision, "FAIL")
+        self.assertEqual(report.metadata["llm_decision"], "UNAVAILABLE")
+
+    def test_llm_unavailable_preserves_medium_policy_warn(self) -> None:
+        issue = SecurityIssue(
+            tool="semgrep",
+            severity=Severity.MEDIUM,
+            type="test-rule",
+            message="medium finding",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            report = make_decision(
+                _analysis(recommended_decision="WARN", errors=["LLM unavailable"]),
                 {"test": _summary([issue])},
                 Path(tmp),
             )

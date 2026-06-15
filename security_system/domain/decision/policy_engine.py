@@ -22,28 +22,44 @@ class PolicyEngine:
         Rules (priority order):
         - Any Gitleaks secret -> FAIL
         - Any CRITICAL issue -> FAIL
-        - Else any HIGH issue -> WARN
+        - Any HIGH issue -> FAIL
+        - Else any MEDIUM issue -> WARN
         - Else -> PASS
         """
         total_issue_count = len(issues)
+        severity_counts = {
+            severity: sum(
+                1 for issue in issues if self._severity_of(issue) == severity
+            )
+            for severity in ("LOW", "MEDIUM", "HIGH", "CRITICAL")
+        }
         has_secret = any(issue.tool.lower() == "gitleaks" for issue in issues)
-        has_critical = any(self._severity_of(issue) == "CRITICAL" for issue in issues)
-        has_high = any(self._severity_of(issue) == "HIGH" for issue in issues)
+        has_critical = severity_counts["CRITICAL"] > 0
+        has_high = severity_counts["HIGH"] > 0
+        has_medium = severity_counts["MEDIUM"] > 0
 
         if has_secret:
             decision = "FAIL"
+            reason_code = "GITLEAKS_SECRET"
             summary = "Secret detected by Gitleaks; policy evaluation result is FAIL"
         elif has_critical:
             decision = "FAIL"
+            reason_code = "CRITICAL_FINDING"
             summary = (
                 "Critical severity issue detected; policy evaluation result is FAIL"
             )
         elif has_high:
+            decision = "FAIL"
+            reason_code = "HIGH_FINDING"
+            summary = "High severity issue detected; policy evaluation result is FAIL"
+        elif has_medium:
             decision = "WARN"
-            summary = "High severity issue detected; policy evaluation result is WARN"
+            reason_code = "MEDIUM_FINDING"
+            summary = "Medium severity issue detected; policy evaluation result is WARN"
         else:
             decision = "PASS"
-            summary = "No HIGH or CRITICAL issues detected; policy evaluation result is PASS"
+            reason_code = "NO_BLOCKING_FINDINGS"
+            summary = "No MEDIUM, HIGH, or CRITICAL issues detected; policy evaluation result is PASS"
 
         return DecisionReport(
             timestamp=datetime.now().isoformat(),
@@ -55,6 +71,8 @@ class PolicyEngine:
             metadata={
                 "status": decision,
                 "summary": summary,
+                "reason_code": reason_code,
+                "severity_counts": severity_counts,
                 "total_issue_count": total_issue_count,
                 "gitleaks_secret_count": sum(
                     1 for issue in issues if issue.tool.lower() == "gitleaks"
