@@ -49,6 +49,7 @@ Configure these Vercel environment variables for the production deployment:
 - `MONGODB_DATABASE`
 - `SECURITY_MONITOR_SECRET`
 - `RETENTION_DAYS`
+- `MAX_FINDINGS_PER_RUN` (defaults to `5000`)
 
 The root `backend/index.py` module and `backend/api/index.py` serverless function expose the existing FastAPI application to Vercel. `backend/vercel.json` explicitly rewrites public paths to that function. After deployment, verify that `/health` returns `{"status":"ok"}` and `/docs` displays the FastAPI API documentation.
 

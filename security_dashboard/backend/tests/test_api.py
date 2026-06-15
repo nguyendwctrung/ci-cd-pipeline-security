@@ -56,6 +56,8 @@ def report(run_id="100"):
         "scanner_health": {},
         "findings_by_tool": {"gitleaks": 0},
         "findings_by_severity": {"HIGH": 0, "CRITICAL": 0},
+        "findings": [],
+        "findings_truncated": False,
         "policy_decision": "PASS",
         "llm_available": False,
         "llm_recommendation": "UNAVAILABLE",
@@ -144,3 +146,52 @@ def test_atlas_uri_is_accepted_and_invalid_scheme_is_rejected():
             mongodb_uri="https://cluster.example.mongodb.net/",
             security_monitor_secret="test-secret",
         )
+
+
+def test_detailed_findings_are_validated_and_legacy_reports_are_accepted():
+    client, repository = build_client()
+    detailed = report("200")
+    detailed["findings"] = [{
+        "tool": "semgrep",
+        "severity": "HIGH",
+        "type": "python.lang.security.rule",
+        "message": "Unsafe call detected",
+        "file": "src/app.py",
+        "line": 12,
+    }]
+    body = json.dumps(detailed).encode()
+    assert client.post("/api/v1/runs", content=body, headers=signed_headers(body)).status_code == 202
+    assert repository.runs["200"]["findings"][0]["file"] == "src/app.py"
+
+    legacy = report("201")
+    legacy.pop("findings")
+    legacy.pop("findings_truncated")
+    body = json.dumps(legacy).encode()
+    assert client.post("/api/v1/runs", content=body, headers=signed_headers(body)).status_code == 202
+
+    invalid = report("202")
+    invalid["findings"] = [{
+        "tool": "gitleaks",
+        "severity": "HIGH",
+        "type": "secret",
+        "message": "Secret detected",
+        "file": "../outside.env",
+        "line": 1,
+        "source": "not allowed",
+    }]
+    body = json.dumps(invalid).encode()
+    assert client.post("/api/v1/runs", content=body, headers=signed_headers(body)).status_code == 422
+
+
+def test_configured_finding_limit_is_enforced():
+    client, _ = build_client()
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        mongodb_uri="mongodb+srv://test.example.mongodb.net/",
+        security_monitor_secret="test-secret",
+        max_findings_per_run=1,
+    )
+    payload = report("203")
+    finding = {"tool": "trivy", "severity": "HIGH", "type": "CVE-1", "message": "issue"}
+    payload["findings"] = [finding, finding]
+    body = json.dumps(payload).encode()
+    assert client.post("/api/v1/runs", content=body, headers=signed_headers(body)).status_code == 422

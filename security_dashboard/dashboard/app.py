@@ -12,7 +12,10 @@ from configuration import mongodb_configuration_error
 from dashboard_data import (
     SEVERITY_ORDER,
     build_overview,
+    filter_findings,
     filter_runs,
+    findings_frame,
+    load_findings,
     load_runs,
     parse_timestamp,
     runs_frame,
@@ -79,6 +82,11 @@ def cached_runs(uri: str, database: str, days: int) -> list[dict]:
     return load_runs(uri, database, days=days)
 
 
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_findings(uri: str, database: str, run_ids: tuple[str, ...]) -> list[dict]:
+    return load_findings(uri, database, list(run_ids))
+
+
 def render_dashboard() -> None:
     with st.sidebar:
         st.header("SecMonitor")
@@ -123,7 +131,7 @@ def render_dashboard() -> None:
     gemini.metric("Gemini", "Available" if latest.get("llm_available") else "Unavailable")
     st.caption(f"Latest run: {format_time(latest.get('run_finished_at'))}")
 
-    health_tab, trends_tab, history_tab = st.tabs(("Health", "Trends", "Run history"))
+    health_tab, trends_tab, findings_tab, history_tab = st.tabs(("Health", "Trends", "Findings", "Run history"))
 
     with health_tab:
         left, right = st.columns((2, 1))
@@ -185,6 +193,62 @@ def render_dashboard() -> None:
             availability = round(frame["gemini_available"].mean() * 100, 1)
             st.metric("Gemini availability", f"{availability}%", f"Last {len(frame)} runs")
 
+    with findings_tab:
+        run_ids = tuple(str(run.get("run_id") or run.get("github", {}).get("run_id", "")) for run in runs)
+        finding_records = cached_findings(uri, database, run_ids)
+        frame = findings_frame(finding_records)
+        if any(run.get("findings_truncated") for run in runs):
+            st.warning("One or more runs reached the configured finding limit; displayed details may be incomplete.")
+        if frame.empty:
+            st.info("No detailed findings are available. Legacy runs contain aggregate counts only.")
+        else:
+            first, second, third = st.columns(3)
+            run_options = ["ALL", *run_ids]
+            pending_run = st.session_state.pop("pending_finding_run_id", None)
+            if pending_run in run_options:
+                st.session_state["findings_run_filter"] = pending_run
+            if st.session_state.get("findings_run_filter") not in run_options:
+                st.session_state["findings_run_filter"] = "ALL"
+            selected_run = first.selectbox("Run", run_options, key="findings_run_filter")
+            severity = second.selectbox("Severity", ["ALL", *SEVERITY_ORDER])
+            tools = ["ALL", *sorted(frame["tool"].dropna().unique().tolist())]
+            tool = third.selectbox("Scanner", tools)
+            fourth, fifth, sixth = st.columns(3)
+            finding_type = fourth.text_input("Type or rule")
+            file_filter = fifth.text_input("File")
+            search = sixth.text_input("Search findings", placeholder="Message, commit, run ID...")
+            filtered_findings = filter_findings(
+                frame,
+                run_id=selected_run,
+                severity=severity,
+                tool=tool,
+                finding_type=finding_type,
+                file=file_filter,
+                search=search,
+            )
+            st.metric("Matching findings", len(filtered_findings))
+            page_size = st.selectbox("Rows per page", (25, 50, 100), index=1)
+            page_count = max(1, (len(filtered_findings) + page_size - 1) // page_size)
+            if st.session_state.get("findings_page", 1) > page_count:
+                st.session_state["findings_page"] = 1
+            page = st.number_input("Page", min_value=1, max_value=page_count, key="findings_page")
+            start = (int(page) - 1) * page_size
+            visible = filtered_findings.iloc[start:start + page_size].copy()
+            severity_colors = {
+                "CRITICAL": "background-color: #fee2e2; color: #991b1b",
+                "HIGH": "background-color: #ffedd5; color: #9a3412",
+                "MEDIUM": "background-color: #fef9c3; color: #854d0e",
+                "LOW": "background-color: #dcfce7; color: #166534",
+            }
+            styled = visible.style.map(lambda value: severity_colors.get(value, ""), subset=["severity"])
+            st.dataframe(styled, hide_index=True, width="stretch")
+            st.download_button(
+                "Export filtered CSV",
+                filtered_findings.to_csv(index=False).encode("utf-8"),
+                file_name="security-findings.csv",
+                mime="text/csv",
+            )
+
     with history_tab:
         filter_one, filter_two = st.columns((1, 2))
         selected_status = filter_one.selectbox("Status", ("ALL", "COMPLETED", "BLOCKED", "ERROR"))
@@ -211,6 +275,9 @@ def render_dashboard() -> None:
             run_url = selected.get("github", {}).get("run_url")
             if run_url:
                 st.link_button("Open GitHub Actions run", run_url)
+            if st.button("Filter Findings tab to this run"):
+                st.session_state["pending_finding_run_id"] = selected_id
+                st.info("Findings filter updated. Open the Findings tab to inspect this run.")
 
 
 if not authenticated():

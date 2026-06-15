@@ -47,6 +47,37 @@ def load_runs(
         client.close()
 
 
+def load_findings(
+    mongodb_uri: str,
+    database: str,
+    run_ids: list[str],
+    *,
+    limit: int = 50000,
+) -> list[Dict[str, Any]]:
+    """Load only approved sanitized finding fields for the selected runs."""
+    if not run_ids:
+        return []
+    projection = {
+        "_id": False,
+        "run_id": True,
+        "commit": True,
+        "tool": True,
+        "severity": True,
+        "type": True,
+        "message": True,
+        "file": True,
+        "line": True,
+    }
+    client = MongoClient(mongodb_uri, serverSelectionTimeoutMS=3000)
+    try:
+        cursor = client[database].security_findings.find(
+            {"run_id": {"$in": run_ids}}, projection
+        ).limit(limit)
+        return list(cursor)
+    finally:
+        client.close()
+
+
 def filter_runs(
     runs: Iterable[Dict[str, Any]],
     *,
@@ -121,3 +152,47 @@ def stage_frame(run: Dict[str, Any]) -> pd.DataFrame:
         }
         for name, stage in run.get("stages", {}).items()
     ])
+
+
+def findings_frame(findings: Iterable[Dict[str, Any]]) -> pd.DataFrame:
+    columns = ["severity", "tool", "type", "message", "file", "line", "commit", "run_id"]
+    rows = []
+    for finding in findings:
+        rows.append({
+            "severity": finding.get("severity", "UNKNOWN"),
+            "tool": finding.get("tool", "unknown"),
+            "type": finding.get("type", "unknown"),
+            "message": finding.get("message", ""),
+            "file": finding.get("file") or "N/A",
+            "line": finding.get("line") or "N/A",
+            "commit": finding.get("commit", "unknown"),
+            "run_id": str(finding.get("run_id", "")),
+        })
+    return pd.DataFrame(rows, columns=columns)
+
+
+def filter_findings(
+    frame: pd.DataFrame,
+    *,
+    run_id: str = "ALL",
+    severity: str = "ALL",
+    tool: str = "ALL",
+    finding_type: str = "",
+    file: str = "",
+    search: str = "",
+) -> pd.DataFrame:
+    filtered = frame.copy()
+    if run_id != "ALL":
+        filtered = filtered[filtered["run_id"] == run_id]
+    if severity != "ALL":
+        filtered = filtered[filtered["severity"] == severity]
+    if tool != "ALL":
+        filtered = filtered[filtered["tool"] == tool]
+    for column, value in (("type", finding_type), ("file", file)):
+        if value.strip():
+            filtered = filtered[filtered[column].astype(str).str.contains(value.strip(), case=False, regex=False)]
+    if search.strip():
+        query = search.strip()
+        searchable = filtered[["type", "message", "file", "commit", "run_id"]].astype(str).agg(" ".join, axis=1)
+        filtered = filtered[searchable.str.contains(query, case=False, regex=False)]
+    return filtered

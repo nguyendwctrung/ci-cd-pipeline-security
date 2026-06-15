@@ -5,7 +5,9 @@ from configuration import mongodb_configuration_error
 from dashboard_data import (
     SEVERITY_ORDER,
     build_overview,
+    filter_findings,
     filter_runs,
+    findings_frame,
     parse_timestamp,
     runs_frame,
     severity_rows,
@@ -74,3 +76,14 @@ def test_mongodb_configuration_requires_valid_uri():
     assert mongodb_configuration_error(
         "mongodb+srv://user:password@cluster.example.mongodb.net/"
     ) is None
+
+
+def test_findings_frame_filters_and_missing_locations():
+    frame = findings_frame([
+        {"run_id": "1", "commit": "abc", "tool": "trivy", "severity": "CRITICAL", "type": "CVE-1", "message": "package issue", "file": "package-lock.json", "line": None},
+        {"run_id": "2", "commit": "def", "tool": "semgrep", "severity": "HIGH", "type": "python.lang.rule", "message": "unsafe call", "file": "app.py", "line": 12},
+    ])
+    assert frame.iloc[0]["line"] == "N/A"
+    assert len(filter_findings(frame, severity="HIGH")) == 1
+    assert len(filter_findings(frame, tool="trivy", search="package")) == 1
+    assert len(filter_findings(frame, run_id="2", file="app.py")) == 1

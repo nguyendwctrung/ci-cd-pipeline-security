@@ -23,10 +23,6 @@ logger = logging.getLogger(__name__)
 # Entropy threshold above which a secret is escalated to CRITICAL
 _CRITICAL_ENTROPY_THRESHOLD = 4.5
 
-# Maximum characters preserved from the matched secret (for message context)
-_MATCH_PREVIEW_LEN = 50
-
-
 class GitleaksParser(BaseParser):
 	"""Parses Gitleaks JSON report into normalized SecurityIssue objects."""
 
@@ -45,13 +41,11 @@ class GitleaksParser(BaseParser):
 		for leak in leaks:
 			severity = self._severity_from_entropy(leak.get("Entropy", 0.0))
 			secret_type = leak.get("RuleID") or leak.get("SecretType") or "unknown-secret"
-			match_preview = str(leak.get("Match", ""))[:_MATCH_PREVIEW_LEN]
-
 			issue = SecurityIssue(
 				tool=self.tool_name,
 				severity=severity,
 				type=secret_type,
-				message=f"Secret detected ({secret_type}): {match_preview}",
+				message=f"Potential secret detected by rule {secret_type}",
 				file=leak.get("File") or leak.get("Path"),
 				line=leak.get("StartLine") or leak.get("Line"),
 			)

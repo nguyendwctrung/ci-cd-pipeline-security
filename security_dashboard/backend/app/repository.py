@@ -12,11 +12,17 @@ class MongoRunRepository:
         self.client = MongoClient(uri)
         self.db = self.client[database]
         self.runs = self.db.security_runs
+        self.findings = self.db.security_findings
         self.signatures = self.db.ingestion_signatures
         self.retention_days = retention_days
         self.runs.create_index("run_id", unique=True)
         self.runs.create_index("run_started_at", expireAfterSeconds=retention_days * 86400)
         self.runs.create_index([("run_started_at", DESCENDING)])
+        self.findings.create_index("expires_at", expireAfterSeconds=0)
+        self.findings.create_index([("run_id", ASCENDING)])
+        self.findings.create_index([("run_id", ASCENDING), ("severity", ASCENDING)])
+        self.findings.create_index([("run_id", ASCENDING), ("tool", ASCENDING)])
+        self.findings.create_index([("run_id", ASCENDING), ("file", ASCENDING)])
         self.signatures.create_index("signature", unique=True)
         self.signatures.create_index("expires_at", expireAfterSeconds=0)
 
@@ -32,14 +38,24 @@ class MongoRunRepository:
 
     def upsert(self, report: Dict[str, Any]) -> Dict[str, Any]:
         run_id = str(report["github"]["run_id"])
-        document = {**report, "run_id": run_id, "updated_at": datetime.now(timezone.utc)}
-        return self.runs.find_one_and_update(
+        findings = report.pop("findings", [])
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(days=self.retention_days)
+        document = {**report, "run_id": run_id, "updated_at": now}
+        saved = self.runs.find_one_and_update(
             {"run_id": run_id},
             {"$set": document, "$setOnInsert": {"created_at": datetime.now(timezone.utc)}},
             upsert=True,
             return_document=ReturnDocument.AFTER,
             projection={"_id": False},
         )
+        self.findings.delete_many({"run_id": run_id})
+        if findings:
+            self.findings.insert_many([
+                {**finding, "run_id": run_id, "commit": report.get("git", {}).get("commit_sha", "unknown"), "expires_at": expires_at}
+                for finding in findings
+            ])
+        return saved
 
     def list_runs(
         self,

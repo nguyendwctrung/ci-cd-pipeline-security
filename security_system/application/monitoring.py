@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -16,6 +17,25 @@ def _utc_now() -> str:
 def _clean_error(error: BaseException | str) -> str:
     text = str(error).replace("\r", " ").replace("\n", " ").strip()
     return text[:500] or "Unknown error"
+
+
+def _clean_text(value: object, limit: int) -> str:
+    text = str(value or "").replace("\r", " ").replace("\n", " ").strip()
+    return re.sub(r"\s+", " ", text)[:limit]
+
+
+def _clean_path(value: object) -> Optional[str]:
+    text = _clean_text(value, 500).replace("\\", "/")
+    if not text:
+        return None
+    while text.startswith("./"):
+        text = text[2:]
+    if text.startswith("/") or re.match(r"^[A-Za-z]:/", text):
+        return None
+    parts = [part for part in text.split("/") if part not in ("", ".")]
+    if not parts or ".." in parts:
+        return None
+    return "/".join(parts)[:500]
 
 
 class PipelineMonitor:
@@ -37,6 +57,8 @@ class PipelineMonitor:
             "HIGH": 0,
             "CRITICAL": 0,
         }
+        self._findings: list[Dict[str, Any]] = []
+        self._findings_truncated = False
         self._pipeline_status = "ERROR"
         self._policy_decision: Optional[str] = None
         self._llm_available: Optional[bool] = None
@@ -86,12 +108,25 @@ class PipelineMonitor:
         }
 
     def record_findings(self, summaries: Dict[str, Any]) -> None:
+        max_findings = max(1, int(os.getenv("MAX_FINDINGS_PER_RUN", "5000")))
         for tool, summary in summaries.items():
             self._findings_by_tool[tool] = summary.total_findings
             for severity, count in summary.by_severity.items():
                 self._findings_by_severity[severity] = (
                     self._findings_by_severity.get(severity, 0) + count
                 )
+            for issue in summary.issues:
+                if len(self._findings) >= max_findings:
+                    self._findings_truncated = True
+                    continue
+                self._findings.append({
+                    "tool": _clean_text(issue.tool, 50).lower(),
+                    "severity": issue.severity.value,
+                    "type": _clean_text(issue.type, 200) or "unknown",
+                    "message": _clean_text(issue.message, 500) or "No description available",
+                    "file": _clean_path(issue.file),
+                    "line": issue.line if isinstance(issue.line, int) and issue.line > 0 else None,
+                })
 
     def record_analysis(self, analysis: Any) -> None:
         self._llm_available = not analysis.errors
@@ -120,7 +155,7 @@ class PipelineMonitor:
                 "error": "Stage interrupted before completion",
             }
         return {
-            "schema_version": "1.0",
+            "schema_version": "1.1",
             "run_started_at": self._started_at,
             "run_finished_at": _utc_now(),
             "duration_seconds": round(time.monotonic() - self._started_clock, 3),
@@ -129,6 +164,8 @@ class PipelineMonitor:
             "scanner_health": self._scanner_health,
             "findings_by_tool": self._findings_by_tool,
             "findings_by_severity": self._findings_by_severity,
+            "findings": self._findings,
+            "findings_truncated": self._findings_truncated,
             "policy_decision": self._policy_decision,
             "llm_available": self._llm_available,
             "llm_recommendation": self._llm_recommendation,

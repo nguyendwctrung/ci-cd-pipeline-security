@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     security_monitor_secret: str
     mongodb_database: str = "security_monitor"
     retention_days: int = 90
+    max_findings_per_run: int = 5000
 
     @field_validator("mongodb_uri")
     @classmethod
