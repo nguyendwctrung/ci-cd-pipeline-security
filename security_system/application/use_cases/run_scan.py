@@ -9,6 +9,7 @@ No business logic here. Only wires infra CLI runners to domain parsers.
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -31,6 +32,12 @@ from security_system.infrastructure.storage.artifact_store import (
 )
 
 logger = logging.getLogger(__name__)
+
+REPORT_PATHS = {
+	"gitleaks": GITLEAKS_REPORT,
+	"semgrep": SEMGREP_REPORT,
+	"trivy": TRIVY_REPORT,
+}
 
 
 @dataclass
@@ -120,43 +127,68 @@ def run_scan(
 		monitor.finish_stage("trivy_scan", "COMPLETED")
 		monitor.record_scanner("trivy", "HEALTHY")
 
-	# --- Step 2: Parse with domain parsers -----------------------------------
+	# --- Step 2: Parse normalized reports ------------------------------------
+	scan_output = load_scan_output(reports_dir, monitor=monitor)
+
+	logger.info(
+		"Scan complete — %d total findings (%d gitleaks, %d semgrep, %d trivy)",
+		len(scan_output.all_issues),
+		len(scan_output.summaries["gitleaks"].issues),
+		len(scan_output.summaries["semgrep"].issues),
+		len(scan_output.summaries["trivy"].issues),
+	)
+
+	return scan_output
+
+
+def load_scan_output(
+	reports_dir: Path,
+	*,
+	monitor: Optional[PipelineMonitor] = None,
+) -> ScanOutput:
+	"""Load and normalize scanner reports produced locally or by CI jobs."""
 	logger.info("Parsing scan reports")
 	if monitor:
 		monitor.start_stage("report_parsing")
-	gl_summary = GitleaksParser().parse_file(gl_path)
-	sg_summary = SemgrepParser().parse_file(sg_path)
-	tv_summary = TrivyParser().parse_file(tv_path)
 
-	summaries: Dict[str, ToolSummary] = {
-		"gitleaks": gl_summary,
-		"semgrep": sg_summary,
-		"trivy": tv_summary,
+	parsers = {
+		"gitleaks": GitleaksParser(),
+		"semgrep": SemgrepParser(),
+		"trivy": TrivyParser(),
 	}
-	if monitor:
-		monitor.finish_stage("report_parsing", "COMPLETED")
-		monitor.record_findings(summaries)
-
-	# --- Step 3: Build raw_data for LLM prompt --------------------------------
-	raw_data: Dict[str, List[Any]] = {
-		"gitleaks": gl_raw,
-		"semgrep": sg_raw,
-		"trivy": tv_raw,
+	summaries = {
+		tool: parser.parse_file(reports_dir / REPORT_PATHS[tool])
+		for tool, parser in parsers.items()
 	}
-
-	# --- Step 4: Flatten all issues -------------------------------------------
-	all_issues: List[SecurityIssue] = [
+	raw_data = {
+		tool: _load_raw_findings(tool, reports_dir / REPORT_PATHS[tool])
+		for tool in REPORT_PATHS
+	}
+	all_issues = [
 		issue
 		for summary in summaries.values()
 		for issue in summary.issues
 	]
 
-	logger.info(
-		"Scan complete — %d total findings (%d gitleaks, %d semgrep, %d trivy)",
-		len(all_issues),
-		len(gl_summary.issues),
-		len(sg_summary.issues),
-		len(tv_summary.issues),
+	if monitor:
+		monitor.finish_stage("report_parsing", "COMPLETED")
+		monitor.record_findings(summaries)
+
+	return ScanOutput(
+		summaries=summaries,
+		raw_data=raw_data,
+		all_issues=all_issues,
 	)
 
-	return ScanOutput(summaries=summaries, raw_data=raw_data, all_issues=all_issues)
+
+def _load_raw_findings(tool: str, path: Path) -> List[Any]:
+	"""Return the scanner finding list from its native JSON envelope."""
+	with path.open("r", encoding="utf-8") as handle:
+		data = json.load(handle)
+	if tool == "gitleaks":
+		return data if isinstance(data, list) else list(data.get("Leaks", []))
+	if tool == "semgrep":
+		return list(data.get("results", [])) if isinstance(data, dict) else list(data)
+	if tool == "trivy":
+		return list(data.get("Results", [])) if isinstance(data, dict) else list(data)
+	raise ValueError(f"Unsupported scanner: {tool}")

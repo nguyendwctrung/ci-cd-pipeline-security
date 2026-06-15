@@ -95,6 +95,20 @@ class PipelineMonitor:
             "error": _clean_error(error) if error else None,
         }
 
+    def record_stage(
+        self,
+        name: str,
+        status: str,
+        duration_seconds: float,
+        error: BaseException | str | None = None,
+    ) -> None:
+        """Record a stage completed by an external CI worker."""
+        self._stages[name] = {
+            "status": status,
+            "duration_seconds": round(max(0.0, duration_seconds), 3),
+            "error": _clean_error(error) if error else None,
+        }
+
     def record_git(self, context: Any) -> None:
         self._git = {
             "commit_sha": context.commit_hash,

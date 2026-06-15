@@ -9,15 +9,88 @@ on:
     - cron: "17 2 * * *"
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   REPORTS_DIR: security_system/reports/artifacts
+  SCANNER_RESULTS_DIR: security_system/reports/scanner-results
   GITLEAKS_VERSION: "8.24.2"
   SEMGREP_VERSION: "1.101.0"
 
 jobs:
-  security-scan:
+  scan:
+    name: Scan (${{ matrix.tool }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: [gitleaks, semgrep, trivy]
 
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ${{ matrix.tool }}
+        id: install
+        continue-on-error: true
+        shell: bash
+        run: |
+          case "${{ matrix.tool }}" in
+            gitleaks)
+              curl --fail --show-error --location --retry 3 \
+                "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+                -o /tmp/gitleaks.tar.gz
+              tar -tzf /tmp/gitleaks.tar.gz >/dev/null
+              tar -xzf /tmp/gitleaks.tar.gz -C /tmp
+              sudo install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
+              gitleaks version
+              ;;
+            semgrep)
+              python -m pip install -q "semgrep==${SEMGREP_VERSION}"
+              semgrep --version
+              ;;
+            trivy)
+              wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+              echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+              sudo apt-get update -qq
+              sudo apt-get install -qq -y trivy
+              trivy --version
+              ;;
+          esac
+
+      - name: Run ${{ matrix.tool }} scan
+        if: ${{ !cancelled() }}
+        run: |
+          python -m security_system.application.scanner_job "${{ matrix.tool }}" \
+            --target . \
+            --output-dir scanner-output \
+            --installation-status "${{ steps.install.outcome }}"
+
+      - name: Upload ${{ matrix.tool }} result
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanner-${{ matrix.tool }}
+          path: scanner-output/
+          retention-days: 1
+          if-no-files-found: error
+
+  aggregate:
+    name: Aggregate security decision
+    needs: scan
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       issues: write
@@ -33,7 +106,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
+          cache: pip
           cache-dependency-path: security_system/requirements.txt
 
       - name: Configure diff context
@@ -50,7 +123,6 @@ jobs:
           else
             BASE="$BEFORE_SHA"
             HEAD="$CURRENT_SHA"
-
             if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
               if git rev-parse --verify HEAD^ >/dev/null 2>&1; then
                 BASE="$(git rev-parse --verify HEAD^)"
@@ -59,7 +131,6 @@ jobs:
               fi
             fi
           fi
-
           printf 'SECURITY_DIFF_BASE=%s\n' "$BASE" >> "$GITHUB_ENV"
           printf 'SECURITY_DIFF_HEAD=%s\n' "$HEAD" >> "$GITHUB_ENV"
 
@@ -68,40 +139,24 @@ jobs:
         env:
           PIP_INDEX_URL: https://pypi.org/simple/
 
-      - name: Install Gitleaks
-        run: |
-          echo "Installing Gitleaks ${GITLEAKS_VERSION}..."
-          curl --fail --show-error --location --retry 3 \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-            -o /tmp/gitleaks.tar.gz
-          tar -tzf /tmp/gitleaks.tar.gz >/dev/null
-          tar -xzf /tmp/gitleaks.tar.gz -C /tmp
-          sudo install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
-          gitleaks version
+      - name: Download scanner results
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: scanner-*
+          path: ${{ env.SCANNER_RESULTS_DIR }}
+          merge-multiple: true
 
-      - name: Install Semgrep
-        run: |
-          echo "Installing Semgrep ${SEMGREP_VERSION}..."
-          python -m pip install -q "semgrep==${SEMGREP_VERSION}"
-          semgrep --version
-
-      - name: Install Trivy
-        run: |
-          echo "Installing Trivy..."
-          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-          echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
-          sudo apt-get update -qq
-          sudo apt-get install -qq -y trivy
-          trivy --version
-
-      - name: Run unified security pipeline
+      - name: Aggregate security pipeline
         id: decision
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         run: |
           mkdir -p "${{ env.REPORTS_DIR }}"
-          echo "Running unified security pipeline..."
-          python -m security_system.application.pipeline 2>&1 | tee "${{ env.REPORTS_DIR }}/security-pipeline.log"
+          python -m security_system.application.aggregate_pipeline \
+            --scanner-dir "${{ env.SCANNER_RESULTS_DIR }}" \
+            --reports-dir "${{ env.REPORTS_DIR }}" \
+            2>&1 | tee "${{ env.REPORTS_DIR }}/security-pipeline.log"
           pipeline_status=${PIPESTATUS[0]}
           exit "$pipeline_status"
 
@@ -125,7 +180,10 @@ jobs:
         with:
           name: security-scan-output
           path: |
-            ${{ env.REPORTS_DIR }}/*.json
+            ${{ env.REPORTS_DIR }}/summary.json
+            ${{ env.REPORTS_DIR }}/ai_analysis.json
+            ${{ env.REPORTS_DIR }}/decision_report.json
+            ${{ env.REPORTS_DIR }}/monitor_report.json
             ${{ env.REPORTS_DIR }}/security-pipeline.log
           retention-days: 30
           if-no-files-found: ignore
@@ -216,7 +274,6 @@ jobs:
           script: |
             const fs = require('fs');
             const reportsDir = '${{ env.REPORTS_DIR }}';
-
             let comment = '## Security Scan Results\n\n';
 
             try {
@@ -228,7 +285,6 @@ jobs:
                 comment += `- **Risk Level**: ${analysis.risk_level}\n`;
                 comment += `- **Malicious**: ${analysis.is_malicious ? 'YES' : 'NO'}\n\n`;
               }
-
               if (fs.existsSync(`${reportsDir}/decision_report.json`)) {
                 const decision = JSON.parse(fs.readFileSync(`${reportsDir}/decision_report.json`, 'utf8'));
                 const icon = decision.decision === 'FAIL' ? '[FAIL]' : decision.decision === 'WARN' ? '[WARN]' : '[PASS]';
@@ -244,9 +300,9 @@ jobs:
               comment += `Failed to parse reports: ${e.message}\n`;
             }
 
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: comment
+              body: comment,
             });
