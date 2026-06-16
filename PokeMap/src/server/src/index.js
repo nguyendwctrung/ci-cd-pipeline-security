@@ -14,8 +14,6 @@ import AdminRouter from "./routes/admin/index.route.js";
 const app = express();
 const PORT = 10000;
 
-const stripe = require('stripe')('sk_live_4eC39HqLyjWDarjtT1zdp7dc');
-
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
