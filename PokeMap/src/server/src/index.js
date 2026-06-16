@@ -11,6 +11,7 @@ import { initSocket } from "./services/socket.service.js";
 import clientRouter from "./routes/client/index.route.js";
 import AdminRouter from "./routes/admin/index.route.js";
 
+
 const app = express();
 const PORT = 10000;
 
