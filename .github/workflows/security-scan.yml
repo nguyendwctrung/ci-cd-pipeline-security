@@ -41,6 +41,31 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Configure diff context
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE="$PR_BASE_SHA"
+            HEAD="$PR_HEAD_SHA"
+          else
+            BASE="$BEFORE_SHA"
+            HEAD="$CURRENT_SHA"
+            if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+              if git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+                BASE="$(git rev-parse --verify HEAD^)"
+              else
+                BASE="$(git hash-object -t tree /dev/null)"
+              fi
+            fi
+          fi
+          printf 'SECURITY_DIFF_BASE=%s\n' "$BASE" >> "$GITHUB_ENV"
+          printf 'SECURITY_DIFF_HEAD=%s\n' "$HEAD" >> "$GITHUB_ENV"
+
       - name: Install ${{ matrix.tool }}
         id: install
         continue-on-error: true
@@ -75,6 +100,7 @@ jobs:
           python -m security_system.application.scanner_job "${{ matrix.tool }}" \
             --target . \
             --output-dir scanner-output \
+            --changed-only \
             --installation-status "${{ steps.install.outcome }}"
 
       - name: Upload ${{ matrix.tool }} result

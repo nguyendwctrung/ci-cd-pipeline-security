@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from security_system.application.changed_files import ChangedFileScope, resolve_changed_file_scope
 from security_system.application.use_cases.run_scan import REPORT_PATHS
 from security_system.infrastructure.scanners import run_gitleaks, run_semgrep, run_trivy
 from security_system.infrastructure.storage import ensure_dir
@@ -29,6 +30,7 @@ def run_scanner_job(
     output_dir: Path,
     *,
     installation_status: str = "success",
+    changed_only: bool = False,
 ) -> dict[str, Any]:
     """Run one scanner, always writing a machine-readable manifest."""
     if tool not in SCANNERS:
@@ -39,12 +41,25 @@ def run_scanner_job(
     manifest_path = output_dir / f"{tool}-manifest.json"
     started = time.monotonic()
     error: Optional[str] = None
+    scan_scope: Optional[ChangedFileScope] = None
 
     if installation_status != "success":
         error = f"{tool} installation failed"
     else:
         try:
-            findings = SCANNERS[tool](target, output_path=report_path)
+            if changed_only:
+                scan_scope = resolve_changed_file_scope(target)
+                if not scan_scope.changed_files:
+                    _write_empty_report(tool, report_path)
+                    findings = []
+                else:
+                    findings = SCANNERS[tool](
+                        target,
+                        output_path=report_path,
+                        changed_files=scan_scope.changed_files,
+                    )
+            else:
+                findings = SCANNERS[tool](target, output_path=report_path)
             if findings is None:
                 error = f"{tool} scanner failed or is unavailable"
             else:
@@ -59,6 +74,13 @@ def run_scanner_job(
         "duration_seconds": round(time.monotonic() - started, 3),
         "report": REPORT_PATHS[tool],
         "error": error,
+        "scan_scope": scan_scope.to_manifest() if scan_scope else {
+            "mode": "full",
+            "base": None,
+            "head": None,
+            "changed_file_count": None,
+            "skipped_deleted_count": 0,
+        },
     }
     write_json(manifest_path, manifest)
     if error:
@@ -91,12 +113,21 @@ def _validate_or_normalize_report(
         raise ValueError(f"{tool} scanner returned an invalid result")
 
 
+def _write_empty_report(tool: str, report_path: Path) -> None:
+    empty: Any = [] if tool == "gitleaks" else {
+        "semgrep": {"results": []},
+        "trivy": {"Results": []},
+    }[tool]
+    write_json(report_path, empty)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("tool", choices=tuple(SCANNERS))
     parser.add_argument("--target", type=Path, default=Path("."))
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--installation-status", default="success")
+    parser.add_argument("--changed-only", action="store_true")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     run_scanner_job(
@@ -104,6 +135,7 @@ def main() -> None:
         args.target,
         args.output_dir,
         installation_status=args.installation_status,
+        changed_only=args.changed_only,
     )
 
 
