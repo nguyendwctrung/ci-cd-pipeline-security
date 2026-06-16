@@ -2,7 +2,7 @@ import chatBubbleIcon from "@/assets/icons/chat_bubble.png";
 import LikeButton from "./LikeButton.jsx";
 import FollowButton from "./FollowButton.jsx";
 import {Link} from "react-router-dom";
-import {cn} from "@/lib/utils.js"
+import { cn, toPlainText } from "@/lib/utils.js"
 import { useState, useRef, useEffect } from "react";
 import MiniProfileAuthor from "./MiniProfileAuthor.jsx";
 import { Edit, Trash2, RotateCcw, Sparkles } from "lucide-react";
@@ -105,11 +105,11 @@ export default function ContentPostCard ({data, setData, handleImageClick, isOwn
                 <div 
                     ref={contentRef}
                     className={cn(
-                        "text-white text-lg transition-all duration-300 overflow-hidden",
+                        "text-white text-lg transition-all duration-300 overflow-hidden whitespace-pre-wrap",
                         !isExpanded && "max-h-32"
-                    )} 
-                    dangerouslySetInnerHTML={{__html: data.content}}
+                    )}
                 >
+                    {toPlainText(data.content)}
                 </div>
                 {needsExpansion && !isExpanded && (
                     <button 

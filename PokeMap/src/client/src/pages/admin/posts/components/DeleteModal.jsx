@@ -2,6 +2,7 @@ import { Trash2, X } from 'lucide-react';
 
 import {toast} from "sonner";
 import "animate.css"
+import { toPlainText } from "@/lib/utils.js";
 // DeleteModal Component
 const DeleteModal = ({ post, setPost, setOpenModal}) => {
 
@@ -49,7 +50,7 @@ const DeleteModal = ({ post, setPost, setOpenModal}) => {
         {/* Content */}
         <div className="p-6">
           <p className="text-gray-700 mb-2">Are you sure to delete this post?</p>
-          <p className="text-gray-600 text-sm mb-6">The post is from <span className="font-semibold">{post.username} :</span><span className = "line-clamp-3" dangerouslySetInnerHTML={{__html: post.content}}></span></p>
+          <p className="text-gray-600 text-sm mb-6">The post is from <span className="font-semibold">{post.username} :</span><span className = "line-clamp-3 whitespace-pre-wrap">{toPlainText(post.content)}</span></p>
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <p className="text-orange-300 text-sm">You can recover later.</p>
           </div>

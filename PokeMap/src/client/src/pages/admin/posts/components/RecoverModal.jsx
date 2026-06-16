@@ -1,5 +1,6 @@
 import { RotateCcw, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { toPlainText } from "@/lib/utils.js";
 export default function RecoverModal({ post, setPost, setOpenModal }) {
   const handleRecover = () => {
 
@@ -44,7 +45,7 @@ export default function RecoverModal({ post, setPost, setOpenModal }) {
         {/* Content */}
         <div className="p-6">
           <p className="text-gray-700 mb-2">Are you sure to recover this post?</p>
-          <p className="text-gray-600 text-sm mb-6">The post is from <span className="font-semibold">{post.username}: </span><span className = "line-clamp-3" dangerouslySetInnerHTML={{__html: post.content}}></span></p>
+          <p className="text-gray-600 text-sm mb-6">The post is from <span className="font-semibold">{post.username}: </span><span className = "line-clamp-3 whitespace-pre-wrap">{toPlainText(post.content)}</span></p>
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
             <p className="text-green-700 text-sm">This will restore the post to its original state.</p>
           </div>

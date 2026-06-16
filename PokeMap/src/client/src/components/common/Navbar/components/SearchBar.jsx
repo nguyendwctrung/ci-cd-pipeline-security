@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import speakingurl from "speakingurl";
+import { toPlainText } from "@/lib/utils.js";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
@@ -115,13 +116,6 @@ export default function SearchBar() {
                 ? <span key={index} className="bg-yellow-500/30 text-yellow-300">{part}</span>
                 : part
         );
-    };
-
-    // Strip HTML tags from content
-    const stripHtml = (html) => {
-        if (!html) return "";
-        const doc = new DOMParser().parseFromString(html, 'text/html');
-        return doc.body.textContent || "";
     };
 
     const filteredUsers = activeTab === "posts" ? [] : results.users;
@@ -251,7 +245,7 @@ export default function SearchBar() {
                                                 </div>
                                                 {user.description && (
                                                     <div className="text-gray-400 text-sm truncate mt-0.5">
-                                                        <div dangerouslySetInnerHTML={{ __html: highlightText(stripHtml(user.description), keyword) }}></div>
+                                                        <div>{highlightText(toPlainText(user.description), keyword)}</div>
                                                     </div>
                                                 )}
                                             </div>
@@ -313,8 +307,8 @@ export default function SearchBar() {
                                                     <span>{new Date(post.createdAt).toLocaleDateString()}</span>
                                                 </div>
                                                 <div className="text-white text-sm leading-relaxed line-clamp-2 group-hover:text-blue-100 transition-colors">
-                                                    {highlightText(stripHtml(post.content)?.substring(0, 150), keyword)}
-                                                    {stripHtml(post.content)?.length > 150 && "..."}
+                                                    {highlightText(toPlainText(post.content).substring(0, 150), keyword)}
+                                                    {toPlainText(post.content).length > 150 && "..."}
                                                 </div>
                                                 <div className="flex items-center gap-4 mt-2 text-gray-500 text-xs">
                                                     <div className="flex items-center gap-1">

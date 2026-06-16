@@ -3,6 +3,7 @@ import {useAuth} from "@/routes/ProtectedRouter.jsx";
 import {useParams, useNavigate, Link} from "react-router-dom";
 import Loading from "@/components/common/ClientLoading";
 import { Sparkles } from "lucide-react";
+import { toPlainText } from "@/lib/utils.js";
 
 
 export default function ProfileHeader({isMiniCard = false, user_id_outside = null, username_outside = null}){
@@ -117,8 +118,9 @@ export default function ProfileHeader({isMiniCard = false, user_id_outside = nul
                             className={`text-gray-300 text-base leading-relaxed prose prose-invert max-w-none ${
                                 !showFullDescription ? 'line-clamp-3' : ''
                             }`}
-                            dangerouslySetInnerHTML={{__html: userProfile?.description}}
-                        ></div>
+                        >
+                            {toPlainText(userProfile?.description)}
+                        </div>
 
                         {/* Toggle Button */}
                         {userProfile.description && (

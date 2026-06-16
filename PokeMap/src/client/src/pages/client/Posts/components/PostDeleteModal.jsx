@@ -1,6 +1,7 @@
 import { X, Trash2, AlertTriangle } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from "sonner";
+import { toPlainText } from "@/lib/utils.js";
 
 export default function PostDeleteModal({ postData, onClose, setPost }) {
     const [isDeleting, setIsDeleting] = useState(false);
@@ -76,9 +77,7 @@ export default function PostDeleteModal({ postData, onClose, setPost }) {
                         {/* Post Preview */}
                         {postData.content && (
                             <div className="bg-gray-800/50 rounded-lg p-4 mb-6 text-left">
-                                <p className="text-gray-300 text-sm line-clamp-3">
-                                    <div dangerouslySetInnerHTML={{__html: postData.content}}></div>
-                                </p>
+                                <p className="text-gray-300 text-sm line-clamp-3 whitespace-pre-wrap">{toPlainText(postData.content)}</p>
                                 {postData.images && postData.images.length > 0 && (
                                     <p className="text-gray-400 text-xs mt-2">
                                         📎 {postData.images.length} image{postData.images.length > 1 ? 's' : ''} attached

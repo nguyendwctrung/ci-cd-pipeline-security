@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Heart, MessageCircle, Search } from "lucide-react";
 import speakingurl from "speakingurl";
+import { toPlainText } from "@/lib/utils.js";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
@@ -130,13 +131,6 @@ export default function SearchPage() {
         );
     };
 
-    // Strip HTML tags from content
-    const stripHtml = (html) => {
-        if (!html) return "";
-        const doc = new DOMParser().parseFromString(html, 'text/html');
-        return doc.body.textContent || "";
-    };
-
     return (
         <div className="min-h-screen pt-20 px-4">
             <div className="max-w-4xl mx-auto">
@@ -225,7 +219,7 @@ export default function SearchPage() {
                                             </div>
                                             {user.description && (
                                               
-                                                <div className = "text-white" dangerouslySetInnerHTML={{ __html: highlightText(stripHtml(user.description), query) }}></div>
+                                                <div className = "text-white">{highlightText(toPlainText(user.description), query)}</div>
                                                     
                                             )}
                                         </div>
@@ -301,7 +295,7 @@ export default function SearchPage() {
                                                     </span>
                                                 </div>
                                                 <div className="text-white mt-2 whitespace-pre-wrap">
-                                                    {highlightText(stripHtml(post.content), query)}
+                                                    {highlightText(toPlainText(post.content), query)}
                                                 </div>
                                                 {post.images?.length > 0 && (
                                                     <div className="flex gap-2 mt-3 overflow-x-auto">

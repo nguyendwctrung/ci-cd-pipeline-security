@@ -4,6 +4,7 @@ import PostDetailModal from "@/pages/admin/posts/components/PostDetailModal";
 import WarnModal from "@/pages/admin/posts/components/WarnModal";
 import DeleteModal from "@/pages/admin/posts/components/DeleteModal";
 import RecoverModal from "@/pages/admin/posts/components/RecoverModal";
+import { toPlainText } from "@/lib/utils.js";
 export default function PostLine ({postInfo}) {
     const [post, setPost] = useState(postInfo);
     useEffect (() => {
@@ -31,7 +32,8 @@ export default function PostLine ({postInfo}) {
                 </div>
             </td>
             <td className="px-6 py-5 max-w-xs">
-                <div className="text-slate-800 font-medium text-base line-clamp-2 leading-relaxed" dangerouslySetInnerHTML={{__html : post.content}} >
+                <div className="text-slate-800 font-medium text-base line-clamp-2 leading-relaxed whitespace-pre-wrap">
+                    {toPlainText(post.content)}
                 </div>
                 <div className="text-slate-500 text-sm font-medium mt-1">
                 {post.images && post.images.length > 0 && `${post.images.length} image${post.images.length > 1 ? 's' : ''}`}

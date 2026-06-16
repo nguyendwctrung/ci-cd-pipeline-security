@@ -1,4 +1,5 @@
 import { X, Heart, MessageCircle, Image, Calendar, FileText, Eye } from 'lucide-react';
+import { toPlainText } from "@/lib/utils.js";
 
 const PostDetailModal = ({ post, setOpenModal }) => {
   if (!post) return null;
@@ -124,7 +125,8 @@ const PostDetailModal = ({ post, setOpenModal }) => {
               </div>
               <h3 className="text-lg font-bold text-slate-800">Post Content</h3>
             </div>
-            <div className="text-slate-700 leading-relaxed text-base rounded-lg p-4 " dangerouslySetInnerHTML={{ __html: post.content }} >
+            <div className="text-slate-700 leading-relaxed text-base rounded-lg p-4 whitespace-pre-wrap">
+              {toPlainText(post.content)}
             </div>
           </div>
 
