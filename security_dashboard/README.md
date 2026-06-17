@@ -1,6 +1,6 @@
 # Security Pipeline Dashboard
 
-Standalone Streamlit monitoring for `security_system`. It does not depend on PokeMap or Node.js.
+Standalone Streamlit monitoring for `security_system`.
 
 ## Components
 
